@@ -1,0 +1,25 @@
+MISE A JOUR : Signature numérique sur les Bons de Commande
+
+Fichiers à placer à la RACINE du projet Streamlit NAP (à côté de app.py) :
+
+  generer_bons.py                  <- remplace l'ancien
+  LOGO_NAP_SARL.jpeg               <- logo NAP
+  logo_gdiz.png                    <- logo GDIZ
+  signature_direction_nap.png      <- signature + cachet (PNG)
+  signature_direction_nap.jpg      <- même image (JPG pour Word)
+
+Dossier pages/ :
+  pages/2_Bons_de_Commande.py      <- remplace l'ancien
+
+Utilisation :
+  1. Ouvrir « Bons de Commande »
+  2. Cocher ou non :
+       - « Régénérer aussi les anciens bons »
+       - « Signature numérique Direction (cachet) »
+  3. Cliquer « Générer les nouveaux Bons (Word + PDF) »
+
+  • Case signature COCHÉE  → cachet + paraphe dans la zone Acheteur
+  • Case signature DÉCOCHÉE → espace vide pour signature physique
+
+Ligne de commande (optionnel) :
+  python generer_bons.py --tout --signature

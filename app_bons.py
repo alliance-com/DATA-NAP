@@ -108,7 +108,8 @@ def charger_donnees():
         "Reference", "Date_Emission", "Heure_Creation", "Utilisateur", "Produit",
         "Code_Fournisseur", "Nom_Fournisseur", "Telephone_Fournisseur", "Commune_Origine",
         "Quantite", "Numero_Tracteur", "Chauffeur",
-        "Numero_Permis", "Telephone_Chauffeur"
+        "Numero_Permis", "Telephone_Chauffeur",
+        "Piece_Identite", "Lieu_Achat", "Prix_Unitaire", "Type_Vehicule"
     ]
     if os.path.exists(FICHIER_EXCEL):
         df = pd.read_excel(FICHIER_EXCEL)
@@ -138,21 +139,24 @@ def obtenir_prochain_numero(df):
                 dernier = num
     return dernier + 1 if dernier > 0 else 1
 
-def lister_fichiers_word():
+def lister_fichiers_bons():
+    """Bons générés : PDF (nouveau format) et anciens bons Word."""
     dossiers = ["bons_generes", "."]
+    try:
+        from generer_bons import DOSSIER_SORTIE
+        dossiers.insert(0, DOSSIER_SORTIE)
+    except Exception:
+        pass
     fichiers_valides = []
     for dossier in dossiers:
-        for pattern in (
-            os.path.join(dossier, "*-BC-SOYABEAN-NAP-2026*.docx"),
-            os.path.join(dossier, "*-BC-SHEA-NAP-2026*.docx"),
-            os.path.join(dossier, "*-BC-COTTON-NAP-2026*.docx"),
-        ):
-            for f in glob.glob(pattern):
-                nom = os.path.basename(f)
-                if any(x in nom.lower() for x in ["template", "prototype", "modele", "model"]):
-                    continue
-                if re.match(r'^\d{3,}-BC-(SOYABEAN|SHEA|COTTON)-NAP-2026', nom):
-                    fichiers_valides.append(f)
+        for ext in ("pdf", "docx"):
+            for prod in ("SOYABEAN", "SHEA", "COTTON"):
+                for f in glob.glob(os.path.join(dossier, f"*-BC-{prod}-NAP-2026*.{ext}")):
+                    nom = os.path.basename(f)
+                    if any(x in nom.lower() for x in ["template", "prototype", "modele", "model"]):
+                        continue
+                    if re.match(r'^\d{3,}-BC-(SOYABEAN|SHEA|COTTON)-NAP-2026', nom):
+                        fichiers_valides.append(f)
     return sorted(set(fichiers_valides), reverse=True)
 
 def supprimer_reference(reference_a_supprimer):
@@ -216,6 +220,12 @@ with st.sidebar.form("form_nouveau_bon", clear_on_submit=True):
     permis = st.text_input("N° Permis")
     tel_chauffeur = st.text_input("Téléphone Chauffeur")
 
+    with st.expander("Champs complémentaires (facultatif)"):
+        piece_identite = st.text_input("N° pièce d'identité du fournisseur")
+        lieu_achat = st.text_input("Lieu d'achat", help="Laissé vide = commune d'origine")
+        prix_unitaire = st.text_input("Prix unitaire (FCFA)", help="Laissé vide = « Suivant conditions du marché »")
+        type_vehicule = st.text_input("Type de véhicule")
+
     submitted = st.form_submit_button("💾 Enregistrer dans Excel", width="stretch")
 
     if submitted:
@@ -253,7 +263,11 @@ with st.sidebar.form("form_nouveau_bon", clear_on_submit=True):
                     "Numero_Tracteur": tracteur.strip(),
                     "Chauffeur": chauffeur.strip(),
                     "Numero_Permis": permis.strip(),
-                    "Telephone_Chauffeur": tel_chauffeur.strip()
+                    "Telephone_Chauffeur": tel_chauffeur.strip(),
+                    "Piece_Identite": piece_identite.strip(),
+                    "Lieu_Achat": lieu_achat.strip(),
+                    "Prix_Unitaire": prix_unitaire.strip(),
+                    "Type_Vehicule": type_vehicule.strip()
                 }
                 df = pd.concat([df, pd.DataFrame([nouvelle_ligne])], ignore_index=True)
                 df.to_excel(FICHIER_EXCEL, index=False)
@@ -279,16 +293,16 @@ else:
 
     with col2:
         regenerer = st.checkbox(
-            "Régénérer aussi les anciens bons (nouveau format 1 page A4)",
+            "Régénérer aussi les anciens bons (nouveau format GDIZ, Word + PDF)",
             value=False,
-            help="Recrée tous les fichiers Word, y compris ceux déjà générés."
+            help="Recrée tous les fichiers Word et PDF, y compris ceux déjà générés."
         )
-        if st.button("📄 Générer les nouveaux Bons Word", width="stretch", type="primary"):
+        if st.button("📄 Générer les Bons de Commande (Word + PDF)", width="stretch", type="primary"):
             with st.spinner("Génération en cours..."):
                 try:
                     from generer_bons import generer_tous_les_bons
-                    generer_tous_les_bons(forcer_tout=regenerer)
-                    st.success("Bons Word générés avec succès !")
+                    resultat = generer_tous_les_bons(forcer_tout=regenerer)
+                    st.session_state["msg_generation"] = resultat if isinstance(resultat, dict) else {}
                     st.rerun()
                 except Exception as e:
                     st.error(f"Erreur lors de la génération : {e}")
@@ -334,38 +348,63 @@ if username == "admin":
 
 # ---------- Téléchargement Word ----------
 st.markdown("---")
-st.subheader("📥 Télécharger les Bons de Commande (Word)")
+st.subheader("📥 Télécharger les Bons de Commande")
+
+# Résultat de la dernière génération (affiché après le rechargement de la page)
+_res = st.session_state.pop("msg_generation", None)
+if _res is not None:
+    if _res.get("erreurs"):
+        st.error(f"{len(_res['erreurs'])} bon(s) n'ont pas pu être générés :")
+        for _err in _res["erreurs"]:
+            st.code(_err)
+    if _res.get("generes", 0) > 0:
+        st.success(f"{_res['generes']} bon(s) généré(s) en Word et PDF.")
+    elif not _res.get("erreurs"):
+        st.info("Aucun nouveau bon à générer : tous existent déjà. "
+                "Cochez « Régénérer aussi les anciens bons » pour les recréer au nouveau format.")
 col_refresh, _ = st.columns([1, 4])
 with col_refresh:
     if st.button("🔄 Actualiser la liste des fichiers"):
         st.rerun()
 
-fichiers_word = lister_fichiers_word()
+fichiers_word = lister_fichiers_bons()
 if not fichiers_word:
-    st.warning("Aucun fichier Word trouvé.")
+    st.warning("Aucun bon généré trouvé.")
     st.info(
-        "1. Cliquez d'abord sur « Générer les nouveaux Bons Word »\n"
+        "1. Cliquez d'abord sur « Générer les Bons de Commande (Word + PDF) »\n"
         "2. Puis cliquez sur « Actualiser la liste des fichiers »"
     )
 else:
-    st.success(f"**{len(fichiers_word)} bon(s) disponible(s) :**")
+    # Un bon = une ligne, avec un bouton Word et un bouton PDF
+    MIME_WORD = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    groupes = {}
     for fichier in fichiers_word:
-        col1, col2 = st.columns([5, 1])
+        base, ext = os.path.splitext(os.path.basename(fichier))
+        groupes.setdefault(base, {})[ext.lower()] = fichier
+    st.success(f"**{len(groupes)} bon(s) disponible(s) :**")
+    for base in sorted(groupes, reverse=True):
+        col1, col2, col3 = st.columns([5, 1, 1])
         with col1:
-            st.write(f"📄 **{os.path.basename(fichier)}**")
-        with col2:
-            try:
-                with open(fichier, "rb") as f:
-                    st.download_button(
-                        label="⬇️ Télécharger",
-                        data=f,
-                        file_name=os.path.basename(fichier),
-                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        key=f"dl_{fichier}",
-                        width="stretch"
-                    )
-            except Exception as e:
-                st.error(f"Erreur : {e}")
+            st.write(f"📄 **{base}**")
+        for col, ext, label, mime in ((col2, ".docx", "⬇️ Word", MIME_WORD),
+                                      (col3, ".pdf", "⬇️ PDF", "application/pdf")):
+            chemin = groupes[base].get(ext)
+            with col:
+                if not chemin:
+                    st.caption("—")
+                    continue
+                try:
+                    with open(chemin, "rb") as f:
+                        st.download_button(
+                            label=label,
+                            data=f.read(),
+                            file_name=os.path.basename(chemin),
+                            mime=mime,
+                            key=f"dl_{chemin}",
+                            width="stretch"
+                        )
+                except Exception as e:
+                    st.error(f"Erreur : {e}")
 
 st.markdown("---")
 st.caption("NAP SARL – Bons de commande multi-produits (SHEA / SOYABEAN / COTTON) + codes FRS")

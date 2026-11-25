@@ -36,7 +36,8 @@ config = {
     },
     'cookie': {
         'expiry_days': 30,
-        'key': 'nap_secret_key_2026_changez_moi',
+        # Clé ≥ 32 caractères (exigence JWT / HMAC-SHA256)
+        'key': 'nap_sarl_auth_secret_key_2026_prod_v1',
         'name': 'nap_auth_cookie'
     },
     'preauthorized': {

@@ -19,13 +19,14 @@ except ImportError:
 DOSSIER_SORTIE = "bons_paiement"
 os.makedirs(DOSSIER_SORTIE, exist_ok=True)
 
-BLEU_FONCE = RGBColor(15, 40, 80)
-BLEU_MOYEN = RGBColor(30, 90, 160)
+# --- Charte BLEU CIEL (voir theme_bleu_ciel.py) ---
+BLEU_FONCE = RGBColor(27, 79, 114)     # texte sur fond bleu ciel
+BLEU_MOYEN = RGBColor(46, 134, 193)    # titres / étiquettes
 GRIS = RGBColor(55, 55, 55)
 GRIS_CLAIR = RGBColor(110, 110, 110)
 VERT_MONTANT = RGBColor(34, 139, 34)  # vert pour montant payé
 ROUGE_NB = RGBColor(192, 57, 43)  # rouge clair pour NB
-BLEU_CIEL = RGBColor(70, 160, 210)  # ligne sous titre
+BLEU_CIEL = RGBColor(93, 173, 226)  # ligne sous titre
 
 
 def set_run_font(run, size=9, bold=False, color=None, name="Calibri"):
@@ -61,7 +62,7 @@ def set_cell_margins(cell, top=30, bottom=30, left=50, right=50):
 
 
 
-def set_table_borders(table, color="1F4E79", size="8"):
+def set_table_borders(table, color="5DADE2", size="8"):
     """Bordures visibles pour un vrai tableau."""
     tbl = table._tbl
     tblPr = tbl.tblPr if tbl.tblPr is not None else OxmlElement("w:tblPr")
@@ -223,13 +224,13 @@ def generer_bon_paiement(data):
     t_top = doc.add_table(rows=1, cols=2)
     t_top.autofit = True
     c_left, c_right = t_top.rows[0].cells
-    shade_cell(c_left, "0F2850")
+    shade_cell(c_left, "87CEEB")   # bandeau d'en-tête bleu ciel
     set_cell_margins(c_left, top=50, bottom=50, left=80, right=80)
     p = c_left.paragraphs[0]
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     tight_para(p, 0, 0)
     r = p.add_run("STE NAP SARL")
-    set_run_font(r, size=14, bold=True, color=RGBColor(255, 255, 255))
+    set_run_font(r, size=14, bold=True, color=BLEU_FONCE)
     p2 = c_left.add_paragraph()
     p2.alignment = WD_ALIGN_PARAGRAPH.CENTER
     tight_para(p2, 0, 0)
@@ -237,7 +238,7 @@ def generer_bon_paiement(data):
         "PLOT NO 14 GLODJIGBE ECONOMIC ZONE • BENIN\n"
         "RCCM RB/COT/21 B 30710 • IFU 3202113334014 • TEL +229 01 94 94 04 14"
     )
-    set_run_font(r2, size=7, color=RGBColor(200, 220, 255))
+    set_run_font(r2, size=7, color=BLEU_FONCE)
 
     c_right.text = ""
     set_cell_margins(c_right, top=20, bottom=20, left=20, right=20)
@@ -266,12 +267,18 @@ def generer_bon_paiement(data):
     bottom.set(qn("w:val"), "single")
     bottom.set(qn("w:sz"), "18")  # épaisseur
     bottom.set(qn("w:space"), "1")
-    bottom.set(qn("w:color"), "46A0D2")  # bleu ciel
+    bottom.set(qn("w:color"), "5DADE2")  # bleu ciel
     pBdr.append(bottom)
     pPr.append(pBdr)
 
     # Infos principales 2x2
     date_v = str(data.get("Date", "")).replace(" 00:00:00", "")
+    # N° BC (un ou plusieurs) — affiché surtout pour les paiements fournisseurs / PURCHASE
+    n_bc = str(data.get("N_BC") or data.get("Bons_Commande") or data.get("Ref_BC") or "").strip()
+    n_dech = str(data.get("N_Dechargement") or data.get("Transactions_Dech") or "").strip()
+    type_op = str(data.get("Type_operation") or "").upper()
+    est_fournisseur = type_op in ("PURCHASE", "ACHAT") or bool(n_bc) or bool(n_dech)
+
     infos = [
         ("Date", date_v),
         ("Prestataire / Fournisseur", data.get("Prestataire", "")),
@@ -281,17 +288,20 @@ def generer_bon_paiement(data):
         ("N° pièce d'identité", data.get("Piece_identite", "")),
         ("Produit", data.get("Produit", "")),
         ("Date d'expiration", data.get("Date_expiration", "")),
-        ("", ""),
+        ("N° Bon(s) de commande" if (est_fournisseur and n_bc) else "", n_bc if n_bc else ""),
+        ("Déchargement(s)" if n_dech else "", n_dech if n_dech else ""),
         ("Adresse / Téléphone", data.get("Telephone", "")),
+        ("", ""),
     ]
-    t_info = doc.add_table(rows=5, cols=4)
+    t_info = doc.add_table(rows=6, cols=4)
     t_info.autofit = True
     pairs = [
         (0, 0, infos[0]), (0, 2, infos[1]),
         (1, 0, infos[2]), (1, 2, infos[3]),
         (2, 0, infos[4]), (2, 2, infos[5]),
         (3, 0, infos[6]), (3, 2, infos[7]),
-        (4, 0, ("", "")), (4, 2, infos[9]),
+        (4, 0, infos[8]), (4, 2, infos[9]),
+        (5, 0, infos[10]), (5, 2, infos[11]),
     ]
     for row_i, col_i, (lab, val) in pairs:
         if not lab:
@@ -319,18 +329,18 @@ def generer_bon_paiement(data):
 
     t_det = doc.add_table(rows=1 + len(lignes), cols=4)
     t_det.autofit = False
-    set_table_borders(t_det, color="1F4E79", size="8")
+    set_table_borders(t_det, color="5DADE2", size="8")
     set_col_widths(t_det, [4.2, 7.5, 3.5, 2.8])
 
     headers = ["Réf. Doc", "Description / Objet du paiement", "Montant", "Observation"]
     for i, h in enumerate(headers):
         cell = t_det.rows[0].cells[i]
-        shade_cell(cell, "1F4E79")
+        shade_cell(cell, "87CEEB")   # en-tête du tableau : bleu ciel
         set_cell_margins(cell, top=30, bottom=30, left=40, right=40)
         p = cell.paragraphs[0]
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         tight_para(p, 0, 0)
-        set_run_font(p.add_run(h), size=8, bold=True, color=RGBColor(255, 255, 255))
+        set_run_font(p.add_run(h), size=8, bold=True, color=BLEU_FONCE)
 
     for r_idx, ligne in enumerate(lignes, start=1):
         try:
@@ -345,7 +355,7 @@ def generer_bon_paiement(data):
             ligne.get("Observation", "—"),
         ]
         # alternance léger gris
-        fill = "F5F8FC" if r_idx % 2 == 0 else "FFFFFF"
+        fill = "EAF6FD" if r_idx % 2 == 0 else "FFFFFF"
         for i, v in enumerate(vals):
             cell = t_det.rows[r_idx].cells[i]
             shade_cell(cell, fill)
